@@ -1,7 +1,7 @@
 name: Edit Telegram Message with Custom Emojis
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # только ручной запуск
 
 jobs:
   edit-message:
@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies (fixed Telethon)
+      - name: Install dependencies
         run: python3 -m pip install --upgrade pip telethon==1.31.1 requests
 
       - name: Edit Telegram Message
@@ -25,10 +25,10 @@ jobs:
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
         run: |
           python3 - <<'PY'
-          import os, requests, asyncio
+          import os, asyncio, sys
+          import requests
           from telethon import TelegramClient, types
           from telethon.sessions import StringSession
-          import sys
 
           # Проверка секретов
           if not os.environ.get("TELETHON_API_ID") or not os.environ.get("TELETHON_API_HASH") or not os.environ.get("TELETHON_SESSION"):
@@ -39,9 +39,9 @@ jobs:
           API_HASH = os.environ['TELETHON_API_HASH']
           SESSION = os.environ['TELETHON_SESSION']
 
-          # Канал и сообщение (не секрет)
-          CHANNEL = '@test_canal414'   # твой канал
-          MESSAGE_ID = 8               # ID сообщения
+          # Канал и сообщение
+          CHANNEL = '@test_canal414'  # твой канал
+          MESSAGE_ID = 8              # ID сообщения
 
           # Монеты и кастомные эмодзи
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
@@ -51,9 +51,10 @@ jobs:
               "BNB": 5212948037906766349
           }
 
+          # Получаем цены
           def get_prices():
               url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
-              r = requests.get(url, timeout=15)
+              r = requests.get(url, timeout=10)
               r.raise_for_status()
               data = r.json()
               return {item["symbol"]: float(item["price_usd"]) for item in data}
@@ -85,6 +86,8 @@ jobs:
                   entities=entities
               )
               print("Сообщение отредактировано!")
+
+              await client.disconnect()
 
           asyncio.run(main())
           PY
