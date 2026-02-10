@@ -1,7 +1,7 @@
 name: Edit Telegram Message with Custom Emojis
 
 on:
-  workflow_dispatch:  # можно запускать вручную
+  workflow_dispatch:
 
 jobs:
   edit-message:
@@ -23,24 +23,28 @@ jobs:
           TELETHON_API_ID: ${{ secrets.TELETHON_API_ID }}
           TELETHON_API_HASH: ${{ secrets.TELETHON_API_HASH }}
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
-          TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
-          TELEGRAM_MESSAGE_ID: ${{ secrets.TELEGRAM_MESSAGE_ID }}
         run: |
           python3 - <<'PY'
           import os, requests, asyncio
           from telethon import TelegramClient, types
           from telethon.sessions import StringSession
+          import sys
+
+          # Проверка секретов
+          if not os.environ.get("TELETHON_API_ID") or not os.environ.get("TELETHON_API_HASH") or not os.environ.get("TELETHON_SESSION"):
+              print("Ошибка: не заданы TELETHON_API_ID, TELETHON_API_HASH или TELETHON_SESSION")
+              sys.exit(1)
 
           API_ID = int(os.environ['TELETHON_API_ID'])
           API_HASH = os.environ['TELETHON_API_HASH']
           SESSION = os.environ['TELETHON_SESSION']
-          CHANNEL = os.environ['TELEGRAM_CHANNEL']
-          MESSAGE_ID = int(os.environ['TELEGRAM_MESSAGE_ID'])
 
-          # Монеты и их id в Coinlore
+          # Канал и сообщение (не секрет)
+          CHANNEL = '@test_canal414'   # твой канал
+          MESSAGE_ID = 8               # ID сообщения
+
+          # Монеты и кастомные эмодзи
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
-
-          # Кастомные эмодзи в Telegram
           EMOJI_IDS = {
               "BTC": "5213021529092170717",
               "ETH": "5215633431848848497",
