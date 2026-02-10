@@ -1,7 +1,9 @@
 name: Edit Telegram Message with Custom Emojis
 
 on:
-  workflow_dispatch:  # запуск вручную
+  workflow_dispatch:        # запуск вручную
+  schedule:
+    - cron: "*/5 * * * *"  # каждые 5 минут
 
 jobs:
   edit-message:
@@ -87,7 +89,6 @@ jobs:
                   print("Сообщение успешно отредактировано с кастомными эмодзи!")
               except Exception as e:
                   print("Ошибка редактирования:", repr(e))
-                  # fallback plain edit
                   try:
                       await client(EditMessageRequest(
                           peer=CHANNEL,
