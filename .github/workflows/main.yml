@@ -1,52 +1,61 @@
-- name: Update Crypto Prices
-  run: |
-    python3 - <<'EOF'
-    import os
-    import requests
+name: Test Update Crypto Prices in Telegram
 
-    BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-    CHANNEL = os.environ["TELEGRAM_CHANNEL"]
-    MESSAGE_ID = 8
+on:
+  workflow_dispatch:  # ручной запуск для теста
 
-    # ID криптовалют Coinlore
-    COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Crypto Prices
+        run: |
+          python3 - <<'EOF'
+          import os
+          import requests
 
-    # custom_emoji_id как строки
-    EMOJI_IDS = {
-        "BTC": "5242625806655570503",
-        "ETH": "5246838478083211008",
-        "BNB": "5249269678680852956"
-    }
+          BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+          CHANNEL = os.environ["TELEGRAM_CHANNEL"]
+          MESSAGE_ID = 8
 
-    def get_prices():
-        url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
-        resp = requests.get(url).json()
-        return {coin["symbol"]: float(coin["price_usd"]) for coin in resp}
+          # ID криптовалют Coinlore
+          COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
 
-    def format_caption(prices):
-        text = f"{prices['BTC']}$ {prices['ETH']}$ {prices['BNB']}$"
-        entities = [
-            {"type": "custom_emoji", "offset": 0, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
-            {"type": "custom_emoji", "offset": len(f"{prices['BTC']}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
-            {"type": "custom_emoji", "offset": len(f"{prices['BTC']}$ {prices['ETH']}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
-        ]
-        return text, entities
+          # custom_emoji_id как строки
+          EMOJI_IDS = {
+              "BTC": "5242625806655570503",
+              "ETH": "5246838478083211008",
+              "BNB": "5249269678680852956"
+          }
 
-    def update_message():
-        prices = get_prices()
-        caption, entities = format_caption(prices)
-        payload = {
-            "chat_id": CHANNEL,
-            "message_id": MESSAGE_ID,
-            "text": caption,
-            "entities": entities
-        }
-        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload)
-        print(r.text)
+          def get_prices():
+              url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
+              resp = requests.get(url).json()
+              return {coin["symbol"]: float(coin["price_usd"]) for coin in resp}
 
-    if __name__ == "__main__":
-        update_message()
-    EOF
-  env:
-    TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-    TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
+          def format_caption(prices):
+              text = f"{prices['BTC']}$ {prices['ETH']}$ {prices['BNB']}$"
+              entities = [
+                  {"type": "custom_emoji", "offset": 0, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
+                  {"type": "custom_emoji", "offset": len(f"{prices['BTC']}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
+                  {"type": "custom_emoji", "offset": len(f"{prices['BTC']}$ {prices['ETH']}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
+              ]
+              return text, entities
+
+          def update_message():
+              prices = get_prices()
+              caption, entities = format_caption(prices)
+              payload = {
+                  "chat_id": CHANNEL,
+                  "message_id": MESSAGE_ID,
+                  "text": caption,
+                  "entities": entities
+              }
+              r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload)
+              print(r.text)
+
+          if __name__ == "__main__":
+              update_message()
+          EOF
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
