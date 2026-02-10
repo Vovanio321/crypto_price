@@ -1,66 +1,62 @@
-name: Send and Update Crypto Prices in Telegram
+name: Update Crypto Prices in Telegram with Custom Emojis
 
 on:
-  workflow_dispatch:  # ручной запуск для теста
+  workflow_dispatch:
 
 jobs:
   update-prices:
     runs-on: ubuntu-latest
     steps:
-      - name: Send or Update Crypto Prices
+      - name: Update Message with Custom Emojis
         run: |
           python3 - <<'EOF'
           import os
           import requests
-          import json
-          import re
 
           BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
           CHANNEL = os.environ["TELEGRAM_CHANNEL"]
-          MESSAGE_ID_FILE = "message_id.txt"
+          MESSAGE_ID = 1762774  # ID сообщения с кастомными эмодзи
 
+          # Coinlore IDs
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
+
+          # Custom emoji IDs из твоего сообщения
+          EMOJI_IDS = {
+              "BTC": "5213021529092170717",
+              "ETH": "5215633431848848497",
+              "BNB": "5212948037906766349"
+          }
 
           def get_prices():
               url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
               resp = requests.get(url).json()
               return {coin["symbol"]: float(coin["price_usd"]) for coin in resp}
 
-          def send_initial_message(prices):
-              # Отправляем первое сообщение с кастомными эмодзи и ценами
-              text = f"🤑 {prices['BTC']:.2f}$ 🤑 {prices['ETH']:.2f}$ 🤑 {prices['BNB']:.2f}$"
-              payload = {
-                  "chat_id": CHANNEL,
-                  "text": text
-              }
-              r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload)
-              result = r.json()
-              print(result)
-              # Сохраняем message_id
-              with open(MESSAGE_ID_FILE, "w") as f:
-                  f.write(str(result["result"]["message_id"]))
+          def edit_message():
+              prices = get_prices()
 
-          def edit_message(prices, message_id):
-              # Получаем текущее сообщение через API
-              # Здесь просто формируем новый текст, оставляя кастомные эмодзи
-              text = f"🤑 {prices['BTC']:.2f}$ 🤑 {prices['ETH']:.2f}$ 🤑 {prices['BNB']:.2f}$"
+              # Текст с пробелами вместо эмодзи
+              text = f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ {prices['BNB']:.2f}$"
+
+              # Entities для кастомных эмодзи
+              entities = [
+                  {"type": "custom_emoji", "offset": 0, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
+                  {"type": "custom_emoji", "offset": len(f" {prices['BTC']:.2f}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
+                  {"type": "custom_emoji", "offset": len(f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
+              ]
+
               payload = {
                   "chat_id": CHANNEL,
-                  "message_id": message_id,
-                  "text": text
+                  "message_id": MESSAGE_ID,
+                  "text": text,
+                  "entities": entities
               }
+
               r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload)
               print(r.text)
 
           if __name__ == "__main__":
-              prices = get_prices()
-              # Проверяем, есть ли сохранённый message_id
-              if os.path.exists(MESSAGE_ID_FILE):
-                  with open(MESSAGE_ID_FILE, "r") as f:
-                      message_id = int(f.read().strip())
-                  edit_message(prices, message_id)
-              else:
-                  send_initial_message(prices)
+              edit_message()
           EOF
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
