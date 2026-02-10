@@ -20,11 +20,11 @@ jobs:
           # ID криптовалют Coinlore
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
 
-          # custom_emoji_id как строки
+          # Рабочие custom_emoji_id, которые ты прислал
           EMOJI_IDS = {
-              "BTC": "5242625806655570503",
-              "ETH": "5246838478083211008",
-              "BNB": "5249269678680852956"
+              "BTC": "5213021529092170717",
+              "ETH": "5215633431848848497",
+              "BNB": "5212948037906766349"
           }
 
           # Получаем цены
@@ -35,9 +35,8 @@ jobs:
 
           # Формируем текст и entities
           def format_caption(prices):
-              # Перед каждой ценой пробел для кастомного эмодзи
+              # Перед каждой ценой пробел-плейсхолдер для кастомного эмодзи
               text = f" {prices['BTC']}$ {prices['ETH']}$ {prices['BNB']}$"
-              # Offset: позиции пробелов перед ценами
               offset_btc = 0
               offset_eth = len(f" {prices['BTC']}$ ")
               offset_bnb = len(f" {prices['BTC']}$ {prices['ETH']}$ ")
