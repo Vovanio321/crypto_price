@@ -4,21 +4,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  send-message:
+  edit-message:
     runs-on: ubuntu-latest
     steps:
-      - name: Send message with custom emojis
+      - name: Edit existing message with custom emojis
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
+          # optionally set TELEGRAM_MESSAGE_ID in repo/workflow secrets or manually in "Run workflow"
+          TELEGRAM_MESSAGE_ID: ${{ secrets.TELEGRAM_MESSAGE_ID }}
         run: |
           python3 - <<'PY'
           import os, requests, json, sys
 
           BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-          CHANNEL = os.environ.get("TELEGRAM_CHANNEL")  # must be -100...
+          CHANNEL = os.environ.get("TELEGRAM_CHANNEL")  # must be numeric -100...
+          MSG_ID_ENV = os.environ.get("TELEGRAM_MESSAGE_ID")
+
           if not BOT_TOKEN or not CHANNEL:
-              print("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL secrets")
+              print("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL secrets (CHANNEL must be -100...)")
+              sys.exit(1)
+
+          # default message id from your link -> message 8
+          try:
+              MESSAGE_ID = int(MSG_ID_ENV) if MSG_ID_ENV else 8
+          except Exception:
+              print("Invalid TELEGRAM_MESSAGE_ID:", MSG_ID_ENV)
               sys.exit(1)
 
           COINS = {
@@ -37,7 +48,7 @@ jobs:
           API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
           def utf16_len(s: str) -> int:
-              # Telegram считает offsets в UTF-16 code units
+              # Telegram считает offsets/length в UTF-16 code units
               return len(s.encode("utf-16-le")) // 2
 
           def get_prices():
@@ -53,25 +64,30 @@ jobs:
               print("Failed to fetch prices:", e)
               sys.exit(1)
 
-          # ⚠️ fallback emoji — он ДОЛЖЕН совпадать с alt у custom emoji
+          # ⚠️ ВАЖНО: fallback must match the custom emoji 'alt' exactly.
+          # Ты сказал, что он совпадает — используем тот же что и раньше:
           FALLBACK = "📊"
 
-          # Формируем текст
+          # Формируем текст (ровно тот, который нужно видеть в сообщении)
           text = (
               f"{FALLBACK} {prices['BTC']:.2f}$ "
               f"{FALLBACK} {prices['ETH']:.2f}$ "
               f"{FALLBACK} {prices['BNB']:.2f}$"
           )
 
-          # Находим UTF-16 offsets для каждого 📊
+          # Находим UTF-16 offsets для каждого вхождения FALLBACK
           offsets = []
           for i, ch in enumerate(text):
               if ch == FALLBACK:
                   offsets.append(utf16_len(text[:i]))
 
-          entities = []
           coins = ["BTC", "ETH", "BNB"]
+          if len(offsets) < len(coins):
+              print("Not enough fallback emoji occurrences found in text.")
+              print("text:", text)
+              sys.exit(1)
 
+          entities = []
           for i, coin in enumerate(coins):
               entities.append({
                   "type": "custom_emoji",
@@ -82,22 +98,33 @@ jobs:
 
           payload = {
               "chat_id": CHANNEL,
+              "message_id": MESSAGE_ID,
               "text": text,
               "entities": entities
           }
 
-          r = requests.post(f"{API}/sendMessage", json=payload, timeout=15)
+          # Use editMessageText to edit the existing message
+          r = requests.post(f"{API}/editMessageText", json=payload, timeout=15)
           try:
               j = r.json()
           except Exception:
               print("Non-JSON response:", r.text)
               sys.exit(1)
 
-          print("sendMessage response:", json.dumps(j, ensure_ascii=False))
+          print("editMessageText response:", json.dumps(j, ensure_ascii=False))
 
           if not j.get("ok"):
-              print("sendMessage failed:", j.get("description"))
+              print("editMessageText failed. Description:", j.get("description"))
+              # Helpful debugging hints
+              print("""
+Possible reasons:
+- Bot is not the author of the message (bots can normally only edit messages they sent).
+- Bot doesn't have rights to edit messages in the channel.
+- custom_emoji_id is not available to this bot (forbidden).
+- Offsets/length don't match the text (we used UTF-16 counting here).
+Check the JSON response above for the 'description' field from Telegram.
+""")
               sys.exit(1)
 
-          print("Message sent successfully, message_id =", j["result"]["message_id"])
+          print("Message edited successfully, message_id =", MESSAGE_ID)
           PY
