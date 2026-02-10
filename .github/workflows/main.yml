@@ -1,22 +1,22 @@
 name: Edit Telegram Message with Custom Emojis
 
 on:
-  workflow_dispatch:  # ручной запуск
+  workflow_dispatch:
 
 jobs:
   edit-message:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: python3 -m pip install --upgrade pip telethon==1.31.1 requests
+      - name: Install deps
+        run: python3 -m pip install --upgrade pip telethon==1.31.3 requests
 
       - name: Edit Telegram Message
         env:
@@ -25,25 +25,27 @@ jobs:
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
         run: |
           python3 - <<'PY'
-          import os, asyncio, sys
+          import os, sys, asyncio
           import requests
+          from requests.adapters import HTTPAdapter
+          from requests.packages.urllib3.util.retry import Retry
           from telethon import TelegramClient, types
           from telethon.sessions import StringSession
 
-          # Проверка секретов
+          # Check secrets
           if not os.environ.get("TELETHON_API_ID") or not os.environ.get("TELETHON_API_HASH") or not os.environ.get("TELETHON_SESSION"):
-              print("Ошибка: не заданы TELETHON_API_ID, TELETHON_API_HASH или TELETHON_SESSION")
+              print("ERROR: TELETHON_API_ID / TELETHON_API_HASH / TELETHON_SESSION must be set in repo secrets")
               sys.exit(1)
 
           API_ID = int(os.environ['TELETHON_API_ID'])
           API_HASH = os.environ['TELETHON_API_HASH']
           SESSION = os.environ['TELETHON_SESSION']
 
-          # Канал и сообщение
-          CHANNEL = '@test_canal414'
-          MESSAGE_ID = 8
+          # Channel and message (not secret)
+          CHANNEL = '@test_canal414'   # <- замените на ваш канал/чат (можно @username или id)
+          MESSAGE_ID = 8               # <- замените на id сообщения
 
-          # Монеты и кастомные эмодзи
+          # Coins & custom emoji ids (document_id or custom_emoji_id style)
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
           EMOJI_IDS = {
               "BTC": 5213021529092170717,
@@ -51,13 +53,28 @@ jobs:
               "BNB": 5212948037906766349
           }
 
-          # Получаем цены
+          # Helper: utf-16 length (Bot API expects UTF-16 code units)
+          def utf16_len(s: str) -> int:
+              return len(s.encode("utf-16-le")) // 2
+
+          # Robust get_prices with retries
           def get_prices():
+              session = requests.Session()
+              retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[502,503,504,522,524])
+              session.mount("https://", HTTPAdapter(max_retries=retries))
               url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
-              r = requests.get(url, timeout=10)
+              r = session.get(url, timeout=10)
               r.raise_for_status()
               data = r.json()
               return {item["symbol"]: float(item["price_usd"]) for item in data}
+
+          # Build entity with compatibility (document_id vs custom_emoji_id)
+          def make_custom_entity(offset, length, emoji_id):
+              try:
+                  # preferred field name in some Telethon versions
+                  return types.MessageEntityCustomEmoji(offset=offset, length=length, document_id=emoji_id)
+              except TypeError:
+                  return types.MessageEntityCustomEmoji(offset=offset, length=length, custom_emoji_id=emoji_id)
 
           async def main():
               client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
@@ -67,26 +84,38 @@ jobs:
               text = f"📊 {prices['BTC']:.2f}$ 📊 {prices['ETH']:.2f}$ 📊 {prices['BNB']:.2f}$"
 
               fallback = "📊"
-              offsets = [i for i, ch in enumerate(text) if ch == fallback]
+              # compute offsets using utf-16 code units for safety with API
+              offsets = []
+              running = ""
+              for ch in text:
+                  if ch == fallback:
+                      offsets.append(utf16_len(running))
+                  running += ch
+
+              if len(offsets) != 3:
+                  print("Unexpected fallback count in text:", text)
+                  await client.disconnect()
+                  sys.exit(1)
+
               coins = ["BTC", "ETH", "BNB"]
+              length = utf16_len(fallback)
 
-              # Используем InputMessageEntityCustomEmoji для совместимости
-              entities = [
-                  types.InputMessageEntityCustomEmoji(
-                      offset=offsets[i],
-                      length=len(fallback),
-                      custom_emoji_id=EMOJI_IDS[coin]
-                  )
-                  for i, coin in enumerate(coins)
-              ]
+              entities = [ make_custom_entity(offsets[i], length, EMOJI_IDS[coins[i]]) for i in range(len(coins)) ]
 
-              await client.edit_message(
-                  entity=CHANNEL,
-                  message=MESSAGE_ID,
-                  text=text,
-                  entities=entities
-              )
-              print("Сообщение отредактировано успешно!")
+              # Try editing once; if it fails, print error and exit (no sleeps)
+              try:
+                  await client.edit_message(entity=CHANNEL, message=MESSAGE_ID, text=text, entities=entities)
+                  print("Edited message successfully.")
+              except Exception as e:
+                  print("Failed to edit message:", repr(e))
+                  # fallback: try edit without entities to confirm connectivity
+                  try:
+                      await client.edit_message(entity=CHANNEL, message=MESSAGE_ID, text=text)
+                      print("Edited message without custom emoji (fallback).")
+                  except Exception as e2:
+                      print("Fallback edit also failed:", repr(e2))
+                      await client.disconnect()
+                      sys.exit(1)
 
               await client.disconnect()
 
