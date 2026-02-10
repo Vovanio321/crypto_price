@@ -24,11 +24,12 @@ jobs:
         run: |
           python3 - <<'PY'
           import os, asyncio, requests
-          from telethon import TelegramClient, types, functions
+          from telethon import TelegramClient, types
           from telethon.sessions import StringSession
+          from telethon.tl.functions.messages import EditMessageRequest
 
           # --- Config ---
-          CHANNEL = '@test_canal414'  # твой канал
+          CHANNEL = '@test_canal414'  # ваш канал
           MESSAGE_ID = 8
 
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
@@ -71,15 +72,13 @@ jobs:
               coins = ["BTC", "ETH", "BNB"]
               length = utf16_len(fallback)
 
-              # Создаем кастомные emoji сущности через document_id
               entities = [
                   types.MessageEntityCustomEmoji(offset=offsets[i], length=length, document_id=EMOJI_IDS[coins[i]])
                   for i in range(len(coins))
               ]
 
               try:
-                  # низкоуровневый вызов MTProto
-                  await client(functions.messages.EditMessage(
+                  await client(EditMessageRequest(
                       peer=CHANNEL,
                       id=MESSAGE_ID,
                       message=text,
@@ -88,9 +87,9 @@ jobs:
                   print("Сообщение успешно отредактировано с кастомными эмодзи!")
               except Exception as e:
                   print("Ошибка редактирования:", repr(e))
-                  # fallback: plain text edit
+                  # fallback plain edit
                   try:
-                      await client(functions.messages.EditMessage(
+                      await client(EditMessageRequest(
                           peer=CHANNEL,
                           id=MESSAGE_ID,
                           message=text
