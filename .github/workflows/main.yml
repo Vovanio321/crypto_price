@@ -1,13 +1,13 @@
-name: Edit Existing Crypto Message in Telegram
+name: Update Crypto Prices in Telegram (keep emojis)
 
 on:
-  workflow_dispatch:  # ручной запуск
+  workflow_dispatch:  # ручной запуск для теста
 
 jobs:
-  update-message:
+  update-prices:
     runs-on: ubuntu-latest
     steps:
-      - name: Edit Crypto Prices Message
+      - name: Update Prices Only
         run: |
           python3 - <<'EOF'
           import os
@@ -20,41 +20,20 @@ jobs:
           # ID криптовалют Coinlore
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
 
-          # Рабочие custom_emoji_id, которые ты прислал
-          EMOJI_IDS = {
-              "BTC": "5213021529092170717",
-              "ETH": "5215633431848848497",
-              "BNB": "5212948037906766349"
-          }
-
           # Получаем цены
           def get_prices():
               url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
               resp = requests.get(url).json()
               return {coin["symbol"]: float(coin["price_usd"]) for coin in resp}
 
-          # Формируем текст и entities
-          def format_caption(prices):
-              # Перед каждой ценой пробел-плейсхолдер для кастомного эмодзи
-              text = f" {prices['BTC']}$ {prices['ETH']}$ {prices['BNB']}$"
-              offset_btc = 0
-              offset_eth = len(f" {prices['BTC']}$ ")
-              offset_bnb = len(f" {prices['BTC']}$ {prices['ETH']}$ ")
-              entities = [
-                  {"type": "custom_emoji", "offset": offset_btc, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
-                  {"type": "custom_emoji", "offset": offset_eth, "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
-                  {"type": "custom_emoji", "offset": offset_bnb, "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
-              ]
-              return text, entities
-
           def edit_message():
               prices = get_prices()
-              text, entities = format_caption(prices)
+              # Собираем текст, оставляя эмодзи нетронутыми
+              text = f"🤑 {prices['BTC']:.2f}$ 🤑 {prices['ETH']:.2f}$ 🤑 {prices['BNB']:.2f}$"
               payload = {
                   "chat_id": CHANNEL,
                   "message_id": MESSAGE_ID,
-                  "text": text,
-                  "entities": entities
+                  "text": text
               }
               r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload)
               print(r.text)
