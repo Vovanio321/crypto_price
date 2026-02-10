@@ -1,7 +1,7 @@
 name: Edit Telegram Message with Custom Emojis
 
 on:
-  workflow_dispatch:  # только ручной запуск
+  workflow_dispatch:  # ручной запуск
 
 jobs:
   edit-message:
@@ -40,8 +40,8 @@ jobs:
           SESSION = os.environ['TELETHON_SESSION']
 
           # Канал и сообщение
-          CHANNEL = '@test_canal414'  # твой канал
-          MESSAGE_ID = 8              # ID сообщения
+          CHANNEL = '@test_canal414'
+          MESSAGE_ID = 8
 
           # Монеты и кастомные эмодзи
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
@@ -70,8 +70,9 @@ jobs:
               offsets = [i for i, ch in enumerate(text) if ch == fallback]
               coins = ["BTC", "ETH", "BNB"]
 
+              # Используем InputMessageEntityCustomEmoji для совместимости
               entities = [
-                  types.MessageEntityCustomEmoji(
+                  types.InputMessageEntityCustomEmoji(
                       offset=offsets[i],
                       length=len(fallback),
                       custom_emoji_id=EMOJI_IDS[coin]
@@ -85,7 +86,7 @@ jobs:
                   text=text,
                   entities=entities
               )
-              print("Сообщение отредактировано!")
+              print("Сообщение отредактировано успешно!")
 
               await client.disconnect()
 
