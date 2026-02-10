@@ -1,38 +1,80 @@
-import os
-import requests
+name: Send Message with Custom Emojis
 
-BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-CHANNEL_ID = "-1003890371911"  # numeric channel ID
-COINS = {"BTC": 90, "ETH": 80, "BNB": 2710}
+on:
+  workflow_dispatch:
 
-# custom_emoji_id, которые бот будет использовать
-EMOJI_IDS = {
-    "BTC": "5213021529092170717",
-    "ETH": "5215633431848848497",
-    "BNB": "5212948037906766349"
-}
+jobs:
+  send-message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send message with custom emojis
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
+        run: |
+          python3 - <<'PY'
+          import os, requests, json, sys
 
-# получаем цены
-def get_prices():
-    url = f"https://api.coinlore.net/api/ticker/?id={','.join(map(str, COINS.values()))}"
-    resp = requests.get(url).json()
-    return {coin["symbol"]: float(coin["price_usd"]) for coin in resp}
+          BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+          CHANNEL = os.environ.get("TELEGRAM_CHANNEL")  # must be numeric -100...
+          if not BOT_TOKEN or not CHANNEL:
+              print("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL secrets (CHANNEL must be -100...)")
+              sys.exit(1)
 
-prices = get_prices()
+          COINS = {"BTC":"90","ETH":"80","BNB":"2710"}
 
-# формируем текст и entities для кастомных эмодзи
-text = f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ {prices['BNB']:.2f}$"
-entities = [
-    {"type": "custom_emoji", "offset": 0, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
-    {"type": "custom_emoji", "offset": len(f" {prices['BTC']:.2f}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
-    {"type": "custom_emoji", "offset": len(f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
-]
+          # ОТЛАДЬ: вставь сюда те custom_emoji_id, которые бот должен использовать (строки)
+          EMOJI_IDS = {
+              "BTC": "5213021529092170717",
+              "ETH": "5215633431848848497",
+              "BNB": "5212948037906766349"
+          }
 
-payload = {
-    "chat_id": CHANNEL_ID,
-    "text": text,
-    "entities": entities
-}
+          API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload)
-print(r.json())
+          def get_prices():
+              url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
+              r = requests.get(url, timeout=15)
+              r.raise_for_status()
+              data = r.json()
+              return {item["symbol"]: float(item["price_usd"]) for item in data}
+
+          try:
+              prices = get_prices()
+          except Exception as e:
+              print("Failed to fetch prices:", e)
+              sys.exit(1)
+
+          # Текст с плейсхолдерами (по одному пробелу перед каждой ценой)
+          text = f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ {prices['BNB']:.2f}$"
+
+          # Вычисляем offsets на этом точном тексте
+          offset_btc = 0
+          offset_eth = len(f" {prices['BTC']:.2f}$ ")
+          offset_bnb = len(f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ ")
+
+          entities = [
+              {"type": "custom_emoji", "offset": offset_btc, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
+              {"type": "custom_emoji", "offset": offset_eth, "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
+              {"type": "custom_emoji", "offset": offset_bnb, "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
+          ]
+
+          payload = {"chat_id": CHANNEL, "text": text, "entities": entities}
+
+          r = requests.post(f"{API}/sendMessage", json=payload, timeout=15)
+          try:
+              j = r.json()
+          except Exception:
+              print("Non-JSON response:", r.text)
+              sys.exit(1)
+
+          print("sendMessage response:", json.dumps(j, ensure_ascii=False))
+
+          if not j.get("ok"):
+              print("sendMessage failed. Description:", j.get("description"))
+              print("If error mentions custom_emoji_id or forbidden, ensure the bot can use those emoji (bot must be admin and emoji must be available to bot).")
+              sys.exit(1)
+
+          mid = j["result"]["message_id"]
+          print("Message sent successfully, message_id =", mid)
+          PY
