@@ -7,7 +7,7 @@ jobs:
   update-message:
     runs-on: ubuntu-latest
     steps:
-      - name: Update Crypto Prices Message
+      - name: Edit Crypto Prices Message
         run: |
           python3 - <<'EOF'
           import os
@@ -35,12 +35,16 @@ jobs:
 
           # Формируем текст и entities
           def format_caption(prices):
-              # Перед каждой ценой 1 пробел для кастомного эмодзи
+              # Перед каждой ценой пробел для кастомного эмодзи
               text = f" {prices['BTC']}$ {prices['ETH']}$ {prices['BNB']}$"
+              # Offset: позиции пробелов перед ценами
+              offset_btc = 0
+              offset_eth = len(f" {prices['BTC']}$ ")
+              offset_bnb = len(f" {prices['BTC']}$ {prices['ETH']}$ ")
               entities = [
-                  {"type": "custom_emoji", "offset": 0, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
-                  {"type": "custom_emoji", "offset": len(f" {prices['BTC']}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
-                  {"type": "custom_emoji", "offset": len(f" {prices['BTC']}$ {prices['ETH']}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
+                  {"type": "custom_emoji", "offset": offset_btc, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
+                  {"type": "custom_emoji", "offset": offset_eth, "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
+                  {"type": "custom_emoji", "offset": offset_bnb, "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
               ]
               return text, entities
 
