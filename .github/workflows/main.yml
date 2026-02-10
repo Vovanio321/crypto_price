@@ -1,26 +1,27 @@
-name: Update Crypto Prices in Telegram with Custom Emojis
+name: Edit Crypto Message with Custom Emojis
 
 on:
   workflow_dispatch:
 
 jobs:
-  update-prices:
+  update-message:
     runs-on: ubuntu-latest
     steps:
-      - name: Update Message with Custom Emojis
+      - name: Update message with custom emojis
         run: |
           python3 - <<'EOF'
           import os
           import requests
+          import time
 
           BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-          CHANNEL = os.environ["TELEGRAM_CHANNEL"]
-          MESSAGE_ID = 1762774  # ID сообщения с кастомными эмодзи
+          # обязательно именно числовой id канала с -100...
+          CHANNEL_ID = "-1003890371911"
+          MESSAGE_ID = 8
 
-          # Coinlore IDs
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
 
-          # Custom emoji IDs из твоего сообщения
+          # custom_emoji_id (строки) — используй те, которые ты получил из сообщения
           EMOJI_IDS = {
               "BTC": "5213021529092170717",
               "ETH": "5215633431848848497",
@@ -29,35 +30,70 @@ jobs:
 
           def get_prices():
               url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
-              resp = requests.get(url).json()
-              return {coin["symbol"]: float(coin["price_usd"]) for coin in resp}
+              r = requests.get(url, timeout=15)
+              r.raise_for_status()
+              data = r.json()
+              return {coin["symbol"]: float(coin["price_usd"]) for coin in data}
 
-          def edit_message():
-              prices = get_prices()
-
-              # Текст с пробелами вместо эмодзи
+          def build_text_and_entities(prices):
+              # Формируем текст с плейсхолдерами (один пробел перед каждой ценой)
               text = f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ {prices['BNB']:.2f}$"
-
-              # Entities для кастомных эмодзи
+              # Вычисляем offsets (позиции пробелов-эмодзи) на основе окончательного текста
+              offset_btc = 0
+              offset_eth = len(f" {prices['BTC']:.2f}$ ")
+              offset_bnb = len(f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ ")
               entities = [
-                  {"type": "custom_emoji", "offset": 0, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
-                  {"type": "custom_emoji", "offset": len(f" {prices['BTC']:.2f}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
-                  {"type": "custom_emoji", "offset": len(f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
+                  {"type": "custom_emoji", "offset": offset_btc, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
+                  {"type": "custom_emoji", "offset": offset_eth, "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
+                  {"type": "custom_emoji", "offset": offset_bnb, "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
               ]
+              return text, entities
 
+          def edit_message(text, entities):
               payload = {
-                  "chat_id": CHANNEL,
+                  "chat_id": CHANNEL_ID,
                   "message_id": MESSAGE_ID,
                   "text": text,
                   "entities": entities
               }
+              resp = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload, timeout=15)
+              return resp
 
-              r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload)
-              print(r.text)
+          # main
+          try:
+              prices = get_prices()
+          except Exception as e:
+              print("Failed to fetch prices:", e)
+              raise
 
-          if __name__ == "__main__":
-              edit_message()
+          text, entities = build_text_and_entities(prices)
+
+          # Для избежания "message is not modified" добавим zero-width-space,
+          # если сервер отвечает, что сообщение не изменилось (retry once).
+          resp = edit_message(text, entities)
+          j = None
+          try:
+              j = resp.json()
+          except Exception:
+              print("Non-JSON response:", resp.text)
+              resp.raise_for_status()
+
+          if j is not None and not j.get("ok", False):
+              # If message is not modified, append ZWSP and retry (keeps visual same but forces modification)
+              desc = j.get("description", "")
+              print("First edit response:", j)
+              if "message is not modified" in desc.lower():
+                  # append zero-width space after each price to force change
+                  zwsp = "\u200b"
+                  text = f" {prices['BTC']:.2f}${zwsp} {prices['ETH']:.2f}${zwsp} {prices['BNB']:.2f}${zwsp}"
+                  resp2 = edit_message(text, entities)
+                  print("Retry response:", resp2.text)
+              else:
+                  # print error and raise
+                  print("Edit failed:", j)
+                  raise SystemExit(1)
+          else:
+              print("Edit success:", resp.text)
           EOF
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
