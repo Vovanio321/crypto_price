@@ -1,141 +1,38 @@
-name: Reliable Edit Crypto Message (custom emoji aware)
+import os
+import requests
 
-on:
-  workflow_dispatch:
+BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+CHANNEL_ID = "-1003890371911"  # numeric channel ID
+COINS = {"BTC": 90, "ETH": 80, "BNB": 2710}
 
-jobs:
-  update-message:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Update message with custom emojis (robust)
-        run: |
-          python3 - <<'PY'
-          import os, requests, json, sys, time
+# custom_emoji_id, которые бот будет использовать
+EMOJI_IDS = {
+    "BTC": "5213021529092170717",
+    "ETH": "5215633431848848497",
+    "BNB": "5212948037906766349"
+}
 
-          BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-          # numeric channel id (must be -100...)
-          CHANNEL_ID = "-1003890371911"
-          # message to edit (the one you specified)
-          TARGET_MESSAGE_ID = 8
+# получаем цены
+def get_prices():
+    url = f"https://api.coinlore.net/api/ticker/?id={','.join(map(str, COINS.values()))}"
+    resp = requests.get(url).json()
+    return {coin["symbol"]: float(coin["price_usd"]) for coin in resp}
 
-          COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
+prices = get_prices()
 
-          # custom_emoji_id (strings) that you provided earlier
-          EMOJI_IDS = {
-              "BTC": "5213021529092170717",
-              "ETH": "5215633431848848497",
-              "BNB": "5212948037906766349"
-          }
+# формируем текст и entities для кастомных эмодзи
+text = f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ {prices['BNB']:.2f}$"
+entities = [
+    {"type": "custom_emoji", "offset": 0, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
+    {"type": "custom_emoji", "offset": len(f" {prices['BTC']:.2f}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
+    {"type": "custom_emoji", "offset": len(f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ "), "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
+]
 
-          API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+payload = {
+    "chat_id": CHANNEL_ID,
+    "text": text,
+    "entities": entities
+}
 
-          def get_prices():
-              url = f"https://api.coinlore.net/api/ticker/?id={','.join(COINS.values())}"
-              r = requests.get(url, timeout=15)
-              r.raise_for_status()
-              data = r.json()
-              return {coin["symbol"]: float(coin["price_usd"]) for coin in data}
-
-          def build_text(prices, use_zwsp=False):
-              # one placeholder space before each price; if use_zwsp append zero-width-space after each price to force change
-              zw = "\u200b" if use_zwsp else ""
-              return f" {prices['BTC']:.2f}${zw} {prices['ETH']:.2f}${zw} {prices['BNB']:.2f}${zw}"
-
-          def build_entities_for_text(text, prices):
-              # offsets must be computed on that exact text
-              # find positions of placeholders (we put a leading space before each price)
-              # we expect pattern: " <BTC>$ <ETH>$ <BNB>$"
-              # compute offsets by searching for the first char of each price block (the placeholder space index)
-              # Placeholder indexes: the index of the space before the price occurrence
-              # We'll compute offsets directly using lengths as done previously (safe since we control format)
-              offset_btc = 0
-              len_btc_block = len(f" {prices['BTC']:.2f}$ ")
-              offset_eth = len(f" {prices['BTC']:.2f}$ ")
-              offset_bnb = len(f" {prices['BTC']:.2f}$ {prices['ETH']:.2f}$ ")
-              entities = [
-                  {"type": "custom_emoji", "offset": offset_btc, "length": 1, "custom_emoji_id": EMOJI_IDS["BTC"]},
-                  {"type": "custom_emoji", "offset": offset_eth, "length": 1, "custom_emoji_id": EMOJI_IDS["ETH"]},
-                  {"type": "custom_emoji", "offset": offset_bnb, "length": 1, "custom_emoji_id": EMOJI_IDS["BNB"]},
-              ]
-              return entities
-
-          def try_edit(message_id, text, entities=None):
-              payload = {"chat_id": CHANNEL_ID, "message_id": message_id, "text": text}
-              if entities is not None:
-                  payload["entities"] = entities
-              r = requests.post(f"{API}/editMessageText", json=payload, timeout=15)
-              return r
-
-          def try_send(text, entities=None):
-              payload = {"chat_id": CHANNEL_ID, "text": text}
-              if entities is not None:
-                  payload["entities"] = entities
-              r = requests.post(f"{API}/sendMessage", json=payload, timeout=15)
-              return r
-
-          # main flow:
-          try:
-              prices = get_prices()
-          except Exception as e:
-              print("Failed to fetch prices:", e)
-              sys.exit(1)
-
-          # 1) Try to edit target message with custom_emoji entities
-          text = build_text(prices, use_zwsp=False)
-          entities = build_entities_for_text(text, prices)
-
-          print("Attempting to edit existing message with custom_emoji entities...")
-          r = try_edit(TARGET_MESSAGE_ID, text, entities)
-          try:
-              jr = r.json()
-          except Exception:
-              print("Non-JSON response on edit:", r.text)
-              jr = {"ok": False, "description": r.text}
-
-          if jr.get("ok"):
-              print("Edit success:", jr)
-              sys.exit(0)
-
-          # If edit failed, check error
-          desc = jr.get("description", "").lower()
-          print("Edit response:", jr)
-          # If message not found (bot not admin or wrong chat_id), try to inform user and stop
-          if "message to edit not found" in desc or "chat not found" in desc or "bot is not a member" in desc or "forbidden" in desc:
-              print("Edit failed with critical error (bot may not be admin or chat_id/message_id wrong). Full response:", jr)
-              # Try to send a new message with entities so bot 'registers' these custom emoji (fallback)
-          else:
-              # other errors (like custom emoji rejected)
-              print("Edit failed, will attempt fallback send to register emoji for bot...")
-
-          # 2) Fallback: try to send a new message using same entities (bot will 'own' them if allowed)
-          print("Attempting to send new message with custom_emoji entities (fallback)...")
-          text_send = build_text(prices, use_zwsp=False)
-          entities_send = build_entities_for_text(text_send, prices)
-          rs = try_send(text_send, entities_send)
-          try:
-              js = rs.json()
-          except Exception:
-              print("Non-JSON response on send:", rs.text)
-              js = {"ok": False, "description": rs.text}
-
-          if js.get("ok"):
-              new_mid = js["result"]["message_id"]
-              print("Sent fallback message successfully, new message_id =", new_mid)
-              # Optionally edit that message to ensure digits update (include entities)
-              time.sleep(1)
-              print("Editing the newly sent message to the same content to ensure entities preserved...")
-              r2 = try_edit(new_mid, text_send, entities_send)
-              print("Edit response for newly sent message:", r2.text)
-              sys.exit(0)
-          else:
-              # 3) Final fallback: send message with normal Unicode emoji so at least numbers update
-              print("Sending with custom_emoji entities failed:", js)
-              print("Final fallback: send message with plain Unicode emoji (no custom IDs).")
-              text_plain = f"📊 {prices['BTC']:.2f}$ 📊 {prices['ETH']:.2f}$ 📊 {prices['BNB']:.2f}$"
-              rplain = try_send(text_plain, None)
-              print("Plain send response:", rplain.text)
-              sys.exit(0)
-
-          PY
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload)
+print(r.json())
