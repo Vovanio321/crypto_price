@@ -31,8 +31,8 @@ jobs:
           from telethon.tl.functions.messages import EditMessageRequest
 
           # --- Config ---
-          CHANNEL = '@test_canal414'  # ваш канал
-          MESSAGE_ID = 8
+          CHANNEL = '@CryptoRuChannelOfficial'
+          MESSAGE_ID = 11095
 
           COINS = {"BTC": "90", "ETH": "80", "BNB": "2710"}
           EMOJI_IDS = {
