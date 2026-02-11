@@ -3,7 +3,7 @@ name: Edit Telegram Message with Custom Emojis
 on:
   workflow_dispatch:        # запуск вручную
   schedule:
-    - cron: "*/10 * * * *"  # каждые 10 минут по UTC
+    - cron: "*/30 * * * *"  # каждые 30 минут по UTC
 
 jobs:
   edit-message:
